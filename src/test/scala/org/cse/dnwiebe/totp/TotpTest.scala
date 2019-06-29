@@ -7,80 +7,91 @@ import org.scalatest.path
 
 class TotpTest extends path.FunSpec {
 
-  describe ("A default Totp") {
-    val subject = new Totp
+  describe ("For RealTotp:") {
+    test (new RealTotpFactory)
+  }
 
-    describe ("having generated two Identities") {
-      val oneIdentity = subject.generateIdentity ()
-      val anotherIdentity = subject.generateIdentity ()
+  describe ("For ToyTotp:") {
+    test (new ToyTotpFactory)
+  }
 
-      it ("shows that Identity::equals works") {
-        val oneIdentityCopy = oneIdentity
+  def test (factory: TotpFactory) {
 
-        assert (oneIdentity !== null)
-        assert (oneIdentity !== "booga")
-        assert (oneIdentity === oneIdentityCopy)
-        assert (oneIdentity !== anotherIdentity)
-      }
-    }
+    describe ("A default Totp") {
+      val subject = factory.make()
 
-    describe ("instructed to generate ten Identities") {
-      val identities = (0 until 10).map (_ => subject.generateIdentity ())
+      describe ("having generated two Identities") {
+        val oneIdentity = subject.generateIdentity ()
+        val anotherIdentity = subject.generateIdentity ()
 
-      it ("does so so that no two are equal") {
-        for (i <- 0 until 10; j <- 0 until 10 if i != j) {
-          assert (identities (i) !== identities (j))
+        it ("shows that Identity::equals works") {
+          val oneIdentityCopy = oneIdentity
+
+          assert (oneIdentity !== null)
+          assert (oneIdentity !== "booga")
+          assert (oneIdentity === oneIdentityCopy)
+          assert (oneIdentity !== anotherIdentity)
         }
       }
 
-      it ("produces passwords that are all of the default length") {
-        val now = Instant.now()
-        val timestamps = (0 until 10).map (offset => now.plus (offset, ChronoUnit.DAYS))
-        for (
-          identity <- identities;
-          timestamp <- timestamps
-        ) {
-          val password = subject.generatePassword(identity, timestamp)
-          assert (password.length == 6)
+      describe ("instructed to generate ten Identities") {
+        val identities = (0 until 10).map (_ => subject.generateIdentity ())
+
+        it ("does so so that no two are equal") {
+          for (i <- 0 until 10; j <- 0 until 10 if i != j) {
+            assert (identities (i) !== identities (j))
+          }
+        }
+
+        it ("produces passwords that are all of the default length") {
+          val now = Instant.now ()
+          val timestamps = (0 until 10).map (offset => now.plus (offset, ChronoUnit.DAYS))
+          for (
+            identity <- identities;
+            timestamp <- timestamps
+          ) {
+            val password = subject.generatePassword (identity, timestamp)
+            assert (password.length == 6)
+          }
+        }
+      }
+
+      describe ("probed for the beginning and end of a time step") {
+        val timestamp = Instant.now ()
+        val firstMillisecond = scanForArticulationPoint (subject, timestamp, -1000)
+        val millisecondAfterLast = scanForArticulationPoint (subject, timestamp, 1000)
+
+        it ("shows that the default time step is 60 seconds") {
+          assert (Duration.between (firstMillisecond, millisecondAfterLast).get (ChronoUnit.SECONDS) === 60)
         }
       }
     }
 
-    describe ("probed for the beginning and end of a time step") {
-      val timestamp = Instant.now ()
-      val firstMillisecond = scanForArticulationPoint(subject, timestamp, -1000)
-      val millisecondAfterLast = scanForArticulationPoint(subject, timestamp, 1000)
+    describe ("A Totp with a non-default time step") {
+      val subject = factory.make (timeStepSeconds = 120)
 
-      it ("shows that the default time step is 60 seconds") {
-        assert (Duration.between (firstMillisecond, millisecondAfterLast).get (ChronoUnit.SECONDS) === 60)
+      describe ("probed for the beginning and end of a time step") {
+        val timestamp = Instant.now ()
+        val firstMillisecond = scanForArticulationPoint (subject, timestamp, -1000)
+        val millisecondAfterLast = scanForArticulationPoint (subject, timestamp, 1000)
+
+        it ("shows that the time step is correct") {
+          assert (Duration.between (firstMillisecond, millisecondAfterLast).get (ChronoUnit.SECONDS) === 120)
+        }
       }
     }
-  }
 
-  describe ("A Totp with a non-default time step") {
-    val subject = new Totp (timeStepSeconds = 120)
+    describe ("A Totp with a non-default password length") {
+      val subject = factory.make (passwordLength = 8)
+      val identity = subject.generateIdentity ()
 
-    describe ("probed for the beginning and end of a time step") {
-      val timestamp = Instant.now ()
-      val firstMillisecond = scanForArticulationPoint(subject, timestamp, -1000)
-      val millisecondAfterLast = scanForArticulationPoint(subject, timestamp, 1000)
+      describe ("asked for a series of passwords") {
+        val now = Instant.now ()
+        val passwords = (0 until 10).map (offset => subject.generatePassword (identity, now.plus (offset, ChronoUnit.DAYS)))
 
-      it ("shows that the time step is correct") {
-        assert (Duration.between (firstMillisecond, millisecondAfterLast).get (ChronoUnit.SECONDS) === 120)
-      }
-    }
-  }
-
-  describe ("A Totp with a non-default password length") {
-    val subject = new Totp (passwordLength = 8)
-    val identity = subject.generateIdentity()
-
-    describe ("asked for a series of passwords") {
-      val now = Instant.now()
-      val passwords = (0 until 10).map (offset => subject.generatePassword(identity, now.plus (offset, ChronoUnit.DAYS)))
-
-      it ("makes them all of the proper length") {
-        passwords.foreach (password => assert (password.length === 8))
+        it ("makes them all of the proper length") {
+          passwords.foreach (password => assert (password.length === 8))
+        }
       }
     }
   }
